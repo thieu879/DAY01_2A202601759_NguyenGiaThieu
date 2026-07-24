@@ -1,7 +1,7 @@
 """
-Checkpoint 1 (10h40) — Part 1: API cơ bản
-Chạy:  pytest tests/test_part1.py -v
-Tất cả API đều được mock — không cần API key thật.
+Checkpoint 1 - Part 1: basic API calls.
+Run: python -m pytest tests/test_part1.py -v
+All API calls are mocked, so no real API key is needed.
 """
 
 import unittest
@@ -10,44 +10,44 @@ from unittest.mock import MagicMock, patch
 from tests._loader import MOD
 
 
-def _make_openai_response(text: str = "Hello from OpenAI"):
-    """Tạo mock tối thiểu giống một OpenAI ChatCompletion response."""
-    choice = MagicMock()
-    choice.message.content = text
+def _make_gemini_response(text: str = "Hello from Gemini"):
     resp = MagicMock()
-    resp.choices = [choice]
+    resp.text = text
     return resp
 
 
 class TestCallOpenAI(unittest.TestCase):
-
-    @patch("openai.OpenAI")
-    def test_returns_non_empty_string(self, MockOpenAI):
+    @patch("google.genai.Client")
+    def test_returns_non_empty_string(self, MockClient):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_openai_response("Test response")
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content.return_value = _make_gemini_response(
+            "Test response"
+        )
 
         result, latency = MOD.call_openai("Hello")
 
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
+        self.assertIsInstance(latency, float)
+        self.assertGreater(latency, 0.0)
 
-    @patch("openai.OpenAI")
-    def test_latency_is_positive_float(self, MockOpenAI):
+    @patch("google.genai.Client")
+    def test_latency_is_positive_float(self, MockClient):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_openai_response()
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content.return_value = _make_gemini_response()
 
         _, latency = MOD.call_openai("Hello")
 
         self.assertIsInstance(latency, float)
         self.assertGreater(latency, 0.0)
 
-    @patch("openai.OpenAI")
-    def test_returns_tuple_of_two(self, MockOpenAI):
+    @patch("google.genai.Client")
+    def test_returns_tuple_of_two(self, MockClient):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_openai_response()
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content.return_value = _make_gemini_response()
 
         result = MOD.call_openai("Hello")
 
@@ -56,34 +56,37 @@ class TestCallOpenAI(unittest.TestCase):
 
 
 class TestCallOpenAIMini(unittest.TestCase):
-
-    @patch("openai.OpenAI")
-    def test_returns_non_empty_string(self, MockOpenAI):
+    @patch("google.genai.Client")
+    def test_returns_non_empty_string(self, MockClient):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_openai_response("Test response")
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content.return_value = _make_gemini_response(
+            "Test response"
+        )
 
         result, latency = MOD.call_openai_mini("Hello")
 
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
+        self.assertIsInstance(latency, float)
+        self.assertGreater(latency, 0.0)
 
-    @patch("openai.OpenAI")
-    def test_uses_mini_model(self, MockOpenAI):
+    @patch("google.genai.Client")
+    def test_uses_mini_model(self, MockClient):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_openai_response()
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content.return_value = _make_gemini_response()
 
         MOD.call_openai_mini("Hello")
 
-        _, kwargs = mock_client.chat.completions.create.call_args
+        _, kwargs = mock_client.models.generate_content.call_args
         self.assertEqual(kwargs.get("model"), MOD.OPENAI_MINI_MODEL)
 
-    @patch("openai.OpenAI")
-    def test_returns_tuple_of_two(self, MockOpenAI):
+    @patch("google.genai.Client")
+    def test_returns_tuple_of_two(self, MockClient):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_openai_response()
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content.return_value = _make_gemini_response()
 
         result = MOD.call_openai_mini("Hello")
 
@@ -92,9 +95,8 @@ class TestCallOpenAIMini(unittest.TestCase):
 
 
 class TestCompareModels(unittest.TestCase):
-
     def test_returns_dict_with_required_keys(self):
-        with patch.object(MOD, "call_openai", return_value=("GPT-4o answer", 0.5)), \
+        with patch.object(MOD, "call_openai", return_value=("GPT answer", 0.5)), \
              patch.object(MOD, "call_openai_mini", return_value=("Mini answer", 0.3)):
             result = MOD.compare_models("Test prompt")
 
@@ -107,10 +109,10 @@ class TestCompareModels(unittest.TestCase):
         }
         self.assertIsInstance(result, dict)
         for key in required_keys:
-            self.assertIn(key, result, f"Thiếu key: {key}")
+            self.assertIn(key, result, f"Missing key: {key}")
 
     def test_latency_values_are_positive(self):
-        with patch.object(MOD, "call_openai", return_value=("GPT-4o answer", 0.5)), \
+        with patch.object(MOD, "call_openai", return_value=("GPT answer", 0.5)), \
              patch.object(MOD, "call_openai_mini", return_value=("Mini answer", 0.3)):
             result = MOD.compare_models("Test prompt")
 
@@ -118,7 +120,7 @@ class TestCompareModels(unittest.TestCase):
         self.assertGreater(result["mini_latency"], 0)
 
     def test_responses_are_non_empty_strings(self):
-        with patch.object(MOD, "call_openai", return_value=("GPT-4o answer", 0.5)), \
+        with patch.object(MOD, "call_openai", return_value=("GPT answer", 0.5)), \
              patch.object(MOD, "call_openai_mini", return_value=("Mini answer", 0.3)):
             result = MOD.compare_models("Test prompt")
 

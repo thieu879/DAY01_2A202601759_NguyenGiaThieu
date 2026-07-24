@@ -1,7 +1,7 @@
 """
-Checkpoint 3 (12h10) — Part 3: Streaming & độ bền
-Chạy:  pytest tests/test_part3.py -v
-Tất cả API đều được mock — không cần API key thật.
+Checkpoint 3 - Part 3: streaming and retry.
+Run: python -m pytest tests/test_part3.py -v
+All API calls are mocked, so no real API key is needed.
 """
 
 import unittest
@@ -11,60 +11,54 @@ from tests._loader import MOD
 
 
 def _make_stream(text: str):
-    """Tạo mock stream: cắt text thành các chunk giống OpenAI streaming."""
+    """Create a mock Gemini stream using chunk.text values."""
+
     chunks = []
     for piece in (text[: len(text) // 2], text[len(text) // 2 :]):
         chunk = MagicMock()
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = piece
+        chunk.text = piece
         chunks.append(chunk)
-    # Chunk cuối có delta.content = None — giống stream thật, code phải xử lý
     final = MagicMock()
-    final.choices = [MagicMock()]
-    final.choices[0].delta.content = None
+    final.text = None
     chunks.append(final)
     return chunks
 
 
 class TestStreamingChatbot(unittest.TestCase):
-
     def test_function_exists_and_is_callable(self):
         self.assertTrue(callable(MOD.streaming_chatbot))
 
     @patch("builtins.input", side_effect=["quit"])
-    @patch("openai.OpenAI")
-    def test_exits_on_quit(self, MockOpenAI, mock_input):
-        """Chatbot phải thoát sạch khi người dùng gõ 'quit'."""
+    @patch("google.genai.Client")
+    def test_exits_on_quit(self, MockClient, mock_input):
         mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        try:
-            MOD.streaming_chatbot()
-        except StopIteration:
-            pass  # input() hết side_effect — chấp nhận được
-
-    @patch("builtins.input", side_effect=["Xin chào", "quit"])
-    @patch("openai.OpenAI")
-    def test_streams_one_turn_with_stream_true(self, MockOpenAI, mock_input):
-        """Một lượt chat phải gọi API với stream=True."""
-        mock_client = MagicMock()
-        MockOpenAI.return_value = mock_client
-        mock_client.chat.completions.create.return_value = _make_stream("Chào bạn!")
+        MockClient.return_value = mock_client
 
         try:
             MOD.streaming_chatbot()
         except StopIteration:
             pass
 
-        self.assertTrue(
-            mock_client.chat.completions.create.called,
-            "Phải gọi API khi người dùng nhập tin nhắn",
-        )
-        _, kwargs = mock_client.chat.completions.create.call_args
-        self.assertTrue(kwargs.get("stream", False), "Phải gọi API với stream=True")
+        mock_client.models.generate_content_stream.assert_not_called()
+
+    @patch("builtins.input", side_effect=["Xin chao", "quit"])
+    @patch("google.genai.Client")
+    def test_streams_one_turn_with_generate_content_stream(self, MockClient, mock_input):
+        mock_client = MagicMock()
+        MockClient.return_value = mock_client
+        mock_client.models.generate_content_stream.return_value = _make_stream("Chao ban!")
+
+        try:
+            MOD.streaming_chatbot()
+        except StopIteration:
+            pass
+
+        self.assertTrue(mock_client.models.generate_content_stream.called)
+        _, kwargs = mock_client.models.generate_content_stream.call_args
+        self.assertEqual(kwargs.get("model"), MOD.OPENAI_MODEL)
 
 
 class TestRetryWithBackoff(unittest.TestCase):
-
     def test_succeeds_on_first_try(self):
         result = MOD.retry_with_backoff(lambda: 42)
         self.assertEqual(result, 42)
